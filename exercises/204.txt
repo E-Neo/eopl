@@ -1,0 +1,9 @@
+(empty-stack)           = [>
+(push [s0 s1 ... sk> x) = [s0 s1 ... sk x>
+(pop [s0 s1 ... sk>)    = [s0 s1 ... sk-1>
+(top [s0 s1 ... sk>)    = sk
+(empty-stack? s)        = #t  if s = [>
+                        | #f  otherwise
+
+constructors: empty-stack, push, pop
+ovservers: top, empty-stack?
