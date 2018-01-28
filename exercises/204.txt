@@ -5,5 +5,5 @@
 (empty-stack? s)        = #t  if s = [>
                         | #f  otherwise
 
-constructors: empty-stack, push, pop
-ovservers: top, empty-stack?
+constructors: empty-stack, push
+ovservers: pop, top, empty-stack?

@@ -3,7 +3,7 @@ local lfs = require "lfs"
 local progress = function (path)
    local res = {0, 0, 0, 0, 0, 0, 0, 0, 0}
    for file in lfs.dir(path) do
-      if string.find(file, "%d%d%d%.%a%a%a") then
+      if string.find(file, "^%d%d%d%.%a%a%a") then
          local chapter = tonumber(file:sub(1, 1))
          res[chapter] = res[chapter] + 1
       end
@@ -27,11 +27,11 @@ local main = function ()
       local t, p = total[i], prog[i]
       s_total = s_total + t
       s_prog = s_prog + p
-      print(string.format("%d: %s %3d/%d  (%.2f%%)",
-                          i, progress_bar(p/t), p, t, p/t))
+      print(string.format("%d: %s %3d/%d  (%5.1f%%)",
+                          i, progress_bar(p/t), p, t, p/t * 100))
    end
-   print(string.format("   %s %3d/%d (%.2f%%)",
-                       progress_bar(s_prog/s_total), s_prog, s_total, s_prog/s_total))
+   print(string.format("   %s %3d/%d (%5.1f%%)",
+                       progress_bar(s_prog/s_total), s_prog, s_total, s_prog/s_total * 100))
 end
 
 main()
