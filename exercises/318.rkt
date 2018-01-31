@@ -2,12 +2,10 @@
 
 ;;; Examples:
 
-;; % The value of the following program is -5
-;; let x = 7
-;; in let y = 2
-;;    in let y = let x = -(x, 1)
-;;               in -(x, y)
-;;       in -(-(x, 8), y)
+;; The following program evaluates to 4
+;; let u = 7
+;; in unpack x y = cons(u, cons(3, emptylist))
+;;    in -(x, y)
 
 
 ;;; Grammatical specification:
@@ -36,7 +34,22 @@
     (expression (identifier) var-exp)
     (expression
      ("let" identifier "=" expression "in" expression)
-     let-exp)))
+     let-exp)
+    (expression
+     ("cons" "(" expression "," expression ")")
+     cons-exp)
+    (expression
+     ("car" "(" expression ")")
+     car-exp)
+    (expression
+     ("cdr" "(" expression ")")
+     cdr-exp)
+    (expression
+     ("null?" "(" expression ")")
+     null?-exp)
+    (expression
+     ("unpack" (arbno identifier) "=" expression "in" expression)
+     unpack-exp)))
 
 
 ;;; Syntax data types:
@@ -62,6 +75,20 @@
   (let-exp
    (var identifier?)
    (exp1 expression?)
+   (body expression?))
+  (cons-exp
+   (exp1 expression?)
+   (exp2 expression?))
+  (car-exp
+   (exp1 expression?))
+  (cdr-exp
+   (exp1 expression?))
+  (null?-exp
+   (exp1 expression?))
+  (emptylist-exp)
+  (unpack-exp
+   (var-list (list-of identifier?))
+   (lst expression?)
    (body expression?)))
 
 (define identifier?
@@ -75,7 +102,10 @@
   (num-val
    (num number?))
   (bool-val
-   (bool boolean?)))
+   (bool boolean?))
+  (pair-val
+   (pair pair?))
+  (emptylist-val))
 
 ;; expval->num : ExpVal -> Int
 (define expval->num
@@ -90,6 +120,30 @@
     (cases expval val
            (bool-val (bool) bool)
            (else (report-expval-extractor-error 'bool val)))))
+
+;; expval->pair : ExpVal -> Pairof(ExpVal)
+(define expval->pair
+  (lambda (val)
+    (cases expval val
+           (pair-val (pair) pair)
+           (else (report-expval-extractor-error 'pair val)))))
+
+;; expval->list : ExpVal -> Listof(Expval)
+(define expval->list
+  (lambda (val)
+    (cases expval val
+           (pair-val (pair)
+                     (let ((p-car (car pair))
+                           (p-cdr (cdr pair)))
+                       (cases expval p-cdr
+                              (pair-val (pair)
+                                        (cons p-car (expval->list p-cdr)))
+                              (emptylist-val ()
+                                             (cons p-car '()))
+                              (else (report-expval-extractor-error
+                                     'list val)))))
+           (emptylist-val () '())
+           (else (report-expval-extractor-error 'list val)))))
 
 (define report-expval-extractor-error
   (lambda (s val)
@@ -136,12 +190,33 @@
            (let-exp (var exp1 body)
                     (let ((val1 (value-of exp1 env)))
                       (value-of body
-                                (extend-env var val1 env)))))))
+                                (extend-env var val1 env))))
+           (cons-exp (exp1 exp2)
+                     (let ((val1 (value-of exp1 env))
+                           (val2 (value-of exp2 env)))
+                       (pair-val (cons val1 val2))))
+           (car-exp (exp1)
+                    (let ((val1 (value-of exp1 env)))
+                      (car (expval->pair val1))))
+           (cdr-exp (exp1)
+                    (let ((val1 (value-of exp1 env)))
+                      (cdr (expval->pair val1))))
+           (null?-exp (exp1)
+                      (let ((val1 (value-of exp1 env)))
+                        (cases expval val1
+                               (emptylist-val () #t)
+                               (else #f))))
+           (emptylist-exp () (emptylist-val))
+           (unpack-exp (var-list lst body)
+                       (let ((val-list (expval->list (value-of lst env))))
+                         (value-of body
+                                   (extend-env* var-list val-list env)))))))
 
 ;; init-env : () -> Env
 (define init-env
   (lambda ()
-    (empty-env)))
+    (extend-env 'emptylist (emptylist-val)
+                (empty-env))))
 
 
 ;;; Environment:
@@ -152,8 +227,21 @@
   (empty-env)
   (extend-env
    (saved-var symbol?)
-   (saved-val expval?)
+   (saved-val (lambda (x) #t))
    (saved-env environment?)))
+
+;; extend-env* : Listof(Var) * Listof(SchemeVal) * Env -> Env
+;; usage: (extend-env* (var1 ... vark) (val1 ... valk) [f]) = [g]
+;;        where g(var) = vali    if var = vari for some i such that 1 <= i <= k
+;;                     | f(var)  otherwise
+(define extend-env*
+  (lambda (var-list val-list env)
+    (if (null? var-list)
+        env
+        (let ((var (car var-list))
+              (val (car val-list)))
+          (extend-env* (cdr var-list) (cdr val-list)
+                       (extend-env var val env))))))
 
 ;; apply-env : Env * Var -> ExpVal
 (define apply-env

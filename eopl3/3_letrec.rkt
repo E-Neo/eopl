@@ -2,12 +2,10 @@
 
 ;;; Examples:
 
-;; % The value of the following program is -5
-;; let x = 7
-;; in let y = 2
-;;    in let y = let x = -(x, 1)
-;;               in -(x, y)
-;;       in -(-(x, 8), y)
+;; % The value of the following program is 12
+;; letrec double(x)
+;;        = if zero?(x) then 0 else -((double -(x, 1)), -2)
+;; in (double 6)
 
 
 ;;; Grammatical specification:
@@ -36,7 +34,16 @@
     (expression (identifier) var-exp)
     (expression
      ("let" identifier "=" expression "in" expression)
-     let-exp)))
+     let-exp)
+    (expression
+     ("proc" "(" identifier ")" expression)
+     proc-exp)
+    (expression
+     ("(" expression expression ")")
+     call-exp)
+    (expression
+     ("letrec" identifier "(" identifier ")" "=" expression "in" expression)
+     letrec-exp)))
 
 
 ;;; Syntax data types:
@@ -62,11 +69,37 @@
   (let-exp
    (var identifier?)
    (exp1 expression?)
-   (body expression?)))
+   (body expression?))
+  (proc-exp
+   (var identifier?)
+   (body expression?))
+  (call-exp
+   (rator expression?)
+   (rand expression?))
+  (letrec-exp
+   (proc-name identifier?)
+   (bound-var identifier?)
+   (proc-body expression?)
+   (letrec-body expression?)))
 
 (define identifier?
   (lambda (x)
     (symbol? x)))
+
+;; proc? : SchemeVal -> Bool
+;; procedure : Var * Exp * Env -> Proc
+(define-datatype proc proc?
+  (procedure
+   (var identifier?)
+   (body expression?)
+   (saved-env environment?)))
+
+;; apply-procedure : Proc * ExpVal -> ExpVal
+(define apply-procedure
+  (lambda (proc1 val)
+    (cases proc proc1
+           (procedure (var body saved-env)
+                      (value-of body (extend-env var val saved-env))))))
 
 
 ;;; Expressed values:
@@ -75,7 +108,9 @@
   (num-val
    (num number?))
   (bool-val
-   (bool boolean?)))
+   (bool boolean?))
+  (proc-val
+   (proc proc?)))
 
 ;; expval->num : ExpVal -> Int
 (define expval->num
@@ -90,6 +125,13 @@
     (cases expval val
            (bool-val (bool) bool)
            (else (report-expval-extractor-error 'bool val)))))
+
+;; expval->proc : ExpVal -> Proc
+(define expval->proc
+  (lambda (val)
+    (cases expval val
+           (proc-val (proc) proc)
+           (else (report-expval-extractor-error 'proc val)))))
 
 (define report-expval-extractor-error
   (lambda (s val)
@@ -136,7 +178,16 @@
            (let-exp (var exp1 body)
                     (let ((val1 (value-of exp1 env)))
                       (value-of body
-                                (extend-env var val1 env)))))))
+                                (extend-env var val1 env))))
+           (proc-exp (var body)
+                     (proc-val (procedure var body env)))
+           (call-exp (rator rand)
+                     (let ((proc (expval->proc (value-of rator env)))
+                           (arg (value-of rand env)))
+                       (apply-procedure proc arg)))
+           (letrec-exp (proc-name bound-var proc-body letrec-body)
+                       (value-of letrec-body
+                                 (extend-env-rec proc-name bound-var proc-body env))))))
 
 ;; init-env : () -> Env
 (define init-env
@@ -153,6 +204,11 @@
   (extend-env
    (saved-var symbol?)
    (saved-val expval?)
+   (saved-env environment?))
+  (extend-env-rec
+   (p-name identifier?)
+   (b-var identifier?)
+   (body expression?)
    (saved-env environment?)))
 
 ;; apply-env : Env * Var -> ExpVal
@@ -164,7 +220,11 @@
            (extend-env (saved-var saved-val saved-env)
                        (if (eqv? search-var saved-var)
                            saved-val
-                           (apply-env saved-env search-var))))))
+                           (apply-env saved-env search-var)))
+           (extend-env-rec (p-name b-var body saved-env)
+                           (if (eqv? search-var p-name)
+                               (proc-val (procedure b-var body e))
+                               (apply-env saved-env search-var))))))
 
 (define report-no-binding-found
   (lambda (search-var)

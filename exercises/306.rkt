@@ -2,12 +2,8 @@
 
 ;;; Examples:
 
-;; % The value of the following program is -5
-;; let x = 7
-;; in let y = 2
-;;    in let y = let x = -(x, 1)
-;;               in -(x, y)
-;;       in -(-(x, 8), y)
+;; % The value of the following program is 14
+;; minus(-(minus(5), 9))
 
 
 ;;; Grammatical specification:
@@ -36,7 +32,10 @@
     (expression (identifier) var-exp)
     (expression
      ("let" identifier "=" expression "in" expression)
-     let-exp)))
+     let-exp)
+    (expression
+     ("minus" "(" expression ")")
+     minus-exp)))
 
 
 ;;; Syntax data types:
@@ -62,7 +61,9 @@
   (let-exp
    (var identifier?)
    (exp1 expression?)
-   (body expression?)))
+   (body expression?))
+  (minus-exp
+   (exp1 expression?)))
 
 (define identifier?
   (lambda (x)
@@ -136,7 +137,10 @@
            (let-exp (var exp1 body)
                     (let ((val1 (value-of exp1 env)))
                       (value-of body
-                                (extend-env var val1 env)))))))
+                                (extend-env var val1 env))))
+           (minus-exp (exp1)
+                      (let ((num1 (expval->num (value-of exp1 env))))
+                        (num-val (- num1)))))))
 
 ;; init-env : () -> Env
 (define init-env
@@ -146,19 +150,19 @@
 
 ;;; Environment:
 
-;; Env = (empty-env) | (extend-env Var ExpVal Env)
+;; Env = (empty-env) | (extend-env Var SchemeVal Env)
 
-(define-datatype environment environment?
+(define-datatype env environment?
   (empty-env)
   (extend-env
    (saved-var symbol?)
-   (saved-val expval?)
+   (saved-val (lambda (x) #t))
    (saved-env environment?)))
 
-;; apply-env : Env * Var -> ExpVal
+;; apply-env : Env * Var -> SchemeVal
 (define apply-env
   (lambda (e search-var)
-    (cases environment e
+    (cases env e
            (empty-env ()
                       (report-no-binding-found search-var))
            (extend-env (saved-var saved-val saved-env)

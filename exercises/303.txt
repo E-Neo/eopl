@@ -1,0 +1,7 @@
+1. Addition can be represented by substraction, i.e. +(a, b) = -(a, -(0, b))
+2. Substraction opration can also be used to represent minus operation, i.e.
+   minus(x) = -(0, x) while it is not easy to represent minus opertaion using
+   addition operation.
+3. Substraction is sensitive to the order of evaluation while addition is not.
+   So we can have a better understanding by choosing substraction as our only
+   arithmetic operation.

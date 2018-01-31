@@ -2,12 +2,9 @@
 
 ;;; Examples:
 
-;; % The value of the following program is -5
-;; let x = 7
-;; in let y = 2
-;;    in let y = let x = -(x, 1)
-;;               in -(x, y)
-;;       in -(-(x, 8), y)
+;; % The value of the following program represents list (4 3 1)
+;; let x = 4
+;; in list(x, -(x, 1), -(x, 3))
 
 
 ;;; Grammatical specification:
@@ -36,7 +33,10 @@
     (expression (identifier) var-exp)
     (expression
      ("let" identifier "=" expression "in" expression)
-     let-exp)))
+     let-exp)
+    (expression
+     ("list" "(" (separated-list expression ",") ")")
+     list-exp)))
 
 
 ;;; Syntax data types:
@@ -62,7 +62,9 @@
   (let-exp
    (var identifier?)
    (exp1 expression?)
-   (body expression?)))
+   (body expression?))
+  (list-exp
+   (exp-list (list-of expression?))))
 
 (define identifier?
   (lambda (x)
@@ -75,7 +77,9 @@
   (num-val
    (num number?))
   (bool-val
-   (bool boolean?)))
+   (bool boolean?))
+  (list-val
+   (lst list?)))
 
 ;; expval->num : ExpVal -> Int
 (define expval->num
@@ -90,6 +94,13 @@
     (cases expval val
            (bool-val (bool) bool)
            (else (report-expval-extractor-error 'bool val)))))
+
+;; expval->list : ExpVal -> List
+(define expval->list
+  (lambda (val)
+    (cases expval val
+           (bool-val (lst) lst)
+           (else (report-expval-extractor-error 'list val)))))
 
 (define report-expval-extractor-error
   (lambda (s val)
@@ -136,7 +147,14 @@
            (let-exp (var exp1 body)
                     (let ((val1 (value-of exp1 env)))
                       (value-of body
-                                (extend-env var val1 env)))))))
+                                (extend-env var val1 env))))
+           (list-exp (exp-list)
+                     (if (null? exp-list)
+                         (list-val '())
+                         (list-val
+                          (append (list (value-of (car exp-list) env))
+                                  (list (value-of (list-exp (cdr exp-list))
+                                                  env)))))))))
 
 ;; init-env : () -> Env
 (define init-env
@@ -146,19 +164,19 @@
 
 ;;; Environment:
 
-;; Env = (empty-env) | (extend-env Var ExpVal Env)
+;; Env = (empty-env) | (extend-env Var SchemeVal Env)
 
-(define-datatype environment environment?
+(define-datatype env environment?
   (empty-env)
   (extend-env
    (saved-var symbol?)
-   (saved-val expval?)
+   (saved-val (lambda (x) #t))
    (saved-env environment?)))
 
-;; apply-env : Env * Var -> ExpVal
+;; apply-env : Env * Var -> SchemeVal
 (define apply-env
   (lambda (e search-var)
-    (cases environment e
+    (cases env e
            (empty-env ()
                       (report-no-binding-found search-var))
            (extend-env (saved-var saved-val saved-env)

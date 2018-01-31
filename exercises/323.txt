@@ -1,0 +1,27 @@
+% The value of the following PROC program is 12.
+let makemult = proc (maker)
+                 proc (x)
+                   if zero?(x) then
+                     0
+                   else
+                     -(((maker maker) -(x, 1)), -4)
+in let times4 = proc (x) ((makemult makemult) x)
+   in (times4 3)
+
+
+% The value of the following PROC program is 6! = 720.
+let makemult = proc (maker)
+                 proc (x)
+                   if zero?(x) then
+                     proc (y) 0
+                   else
+                     proc (y) -((((maker maker) -(x, 1)) y), -(0, y))
+in let times = proc (x) ((makemult makemult) x)
+   in let makefact = proc (maker)
+                       proc (n)
+                         if zero?(n) then
+                           1
+                         else
+                           ((times n) ((maker maker) -(n, 1)))
+      in let fact = proc (n) ((makefact makefact) n)
+         in (fact 6)

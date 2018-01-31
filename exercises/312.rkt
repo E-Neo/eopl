@@ -2,12 +2,18 @@
 
 ;;; Examples:
 
-;; % The value of the following program is -5
+;; % The value of the following program is 2
 ;; let x = 7
-;; in let y = 2
-;;    in let y = let x = -(x, 1)
-;;               in -(x, y)
-;;       in -(-(x, 8), y)
+;; in cond zero?(x) ==> 0
+;;         zero?(-(x, 6)) ==> 1
+;;         zero?(0) ==> 2
+;;    end
+
+;; % The following program raises an error.
+;; let x = 7
+;; in cond zero?(x) ==> 0
+;;         zero?(-(x, 6)) ==> 1
+;;    end
 
 
 ;;; Grammatical specification:
@@ -36,7 +42,10 @@
     (expression (identifier) var-exp)
     (expression
      ("let" identifier "=" expression "in" expression)
-     let-exp)))
+     let-exp)
+    (expression
+     ("cond" (arbno expression "==>" expression) "end")
+     cond-exp)))
 
 
 ;;; Syntax data types:
@@ -62,7 +71,10 @@
   (let-exp
    (var identifier?)
    (exp1 expression?)
-   (body expression?)))
+   (body expression?))
+  (cond-exp
+   (left-list (list-of expression?))
+   (right-list (list-of expression?))))
 
 (define identifier?
   (lambda (x)
@@ -136,7 +148,17 @@
            (let-exp (var exp1 body)
                     (let ((val1 (value-of exp1 env)))
                       (value-of body
-                                (extend-env var val1 env)))))))
+                                (extend-env var val1 env))))
+           (cond-exp (left-list right-list)
+                     (if (null? left-list)
+                         (eopl:error 'cond "None of the tests succeeds")
+                         (let ((left (value-of (car left-list) env))
+                               (right (value-of (car right-list) env)))
+                           (if (expval->bool left)
+                               right
+                               (value-of (cond-exp (cdr left-list)
+                                                   (cdr right-list))
+                                         env))))))))
 
 ;; init-env : () -> Env
 (define init-env
@@ -146,19 +168,19 @@
 
 ;;; Environment:
 
-;; Env = (empty-env) | (extend-env Var ExpVal Env)
+;; Env = (empty-env) | (extend-env Var SchemeVal Env)
 
-(define-datatype environment environment?
+(define-datatype env environment?
   (empty-env)
   (extend-env
    (saved-var symbol?)
-   (saved-val expval?)
+   (saved-val (lambda (x) #t))
    (saved-env environment?)))
 
-;; apply-env : Env * Var -> ExpVal
+;; apply-env : Env * Var -> SchemeVal
 (define apply-env
   (lambda (e search-var)
-    (cases environment e
+    (cases env e
            (empty-env ()
                       (report-no-binding-found search-var))
            (extend-env (saved-var saved-val saved-env)

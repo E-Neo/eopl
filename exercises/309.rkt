@@ -82,7 +82,8 @@
   (cdr-exp
    (exp1 expression?))
   (null?-exp
-   (exp1 expression?)))
+   (exp1 expression?))
+  (emptylist-exp))
 
 (define identifier?
   (lambda (x)
@@ -97,7 +98,8 @@
   (bool-val
    (bool boolean?))
   (pair-val
-   (pair pair?)))
+   (pair pair?))
+  (emptylist-val))
 
 ;; expval->num : ExpVal -> Int
 (define expval->num
@@ -113,11 +115,11 @@
            (bool-val (bool) bool)
            (else (report-expval-extractor-error 'bool val)))))
 
-;; expval->list : ExpVal -> Listof(ExpVal)
+;; expval->pair : ExpVal -> Pairof(ExpVal)
 (define expval->pair
   (lambda (val)
     (cases expval val
-           (pair-val (lst) lst)
+           (pair-val (pair) pair)
            (else (report-expval-extractor-error 'list val)))))
 
 (define report-expval-extractor-error
@@ -178,30 +180,33 @@
                       (cdr (expval->pair val1))))
            (null?-exp (exp1)
                       (let ((val1 (value-of exp1 env)))
-                        (null? (expval->pair val1)))))))
+                        (cases expval val1
+                               (emptylist-val () #t)
+                               (else #f))))
+           (emptylist-exp () (emptylist-val)))))
 
 ;; init-env : () -> Env
 (define init-env
   (lambda ()
-    (extend-env 'emptylist '()
+    (extend-env 'emptylist (emptylist-val)
                 (empty-env))))
 
 
 ;;; Environment:
 
-;; Env = (empty-env) | (extend-env Var SchemeVal Env)
+;; Env = (empty-env) | (extend-env Var ExpVal Env)
 
-(define-datatype env env?
+(define-datatype environment environment?
   (empty-env)
   (extend-env
    (saved-var symbol?)
    (saved-val (lambda (x) #t))
-   (saved-env env?)))
+   (saved-env environment?)))
 
-;; apply-env : Env * Var -> SchemeVal
+;; apply-env : Env * Var -> ExpVal
 (define apply-env
   (lambda (e search-var)
-    (cases env e
+    (cases environment e
            (empty-env ()
                       (report-no-binding-found search-var))
            (extend-env (saved-var saved-val saved-env)
