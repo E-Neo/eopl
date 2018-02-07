@@ -2,10 +2,11 @@
 
 ;;; Examples:
 
-;; % The value of the following program is 12
-;; letrec double(x)
-;;        = if zero?(x) then 0 else -((double -(x, 1)), -2)
-;; in (double 6)
+;; % The value of the following program is 1
+;; letrec
+;;   even(x) = if zero?(x) then 1 else (odd -(x, 1))
+;;   odd(x)  = if zero?(x) then 0 else (even -(x, 1))
+;; in (odd 13)
 
 
 ;;; Grammatical specification:
@@ -42,7 +43,9 @@
      ("(" expression expression ")")
      call-exp)
     (expression
-     ("letrec" identifier "(" identifier ")" "=" expression "in" expression)
+     ("letrec"
+      (arbno identifier "(" identifier ")" "=" expression)
+      "in" expression)
      letrec-exp)))
 
 
@@ -77,9 +80,9 @@
    (rator expression?)
    (rand expression?))
   (letrec-exp
-   (proc-name identifier?)
-   (bound-var identifier?)
-   (proc-body expression?)
+   (proc-names (list-of identifier?))
+   (bound-vars (list-of identifier?))
+   (proc-bodies (list-of expression?))
    (letrec-body expression?)))
 
 (define identifier?
@@ -185,9 +188,10 @@
                      (let ((proc (expval->proc (value-of rator env)))
                            (arg (value-of rand env)))
                        (apply-procedure proc arg)))
-           (letrec-exp (proc-name bound-var proc-body letrec-body)
+           (letrec-exp (proc-names bound-vars proc-bodies letrec-body)
                        (value-of letrec-body
-                                 (extend-env-rec proc-name bound-var proc-body env))))))
+                                 (extend-env-rec*
+                                  proc-names bound-vars proc-bodies env))))))
 
 ;; init-env : () -> Env
 (define init-env
@@ -200,6 +204,7 @@
 ;; Env = (empty-env)
 ;;     | (extend-env Var ExpVal Env)
 ;;     | (extend-env-rec Var Var Exp Env)
+;;     | (extend-env-rec* Listof(Var) Listof(Var) Listof(Exp) Env)
 
 (define-datatype environment environment?
   (empty-env)
@@ -211,6 +216,11 @@
    (p-name identifier?)
    (b-var identifier?)
    (body expression?)
+   (saved-env environment?))
+  (extend-env-rec*
+   (p-names (list-of identifier?))
+   (b-vars (list-of identifier?))
+   (bodies (list-of expression?))
    (saved-env environment?)))
 
 ;; apply-env : Env * Var -> ExpVal
@@ -226,7 +236,23 @@
            (extend-env-rec (p-name b-var body saved-env)
                            (if (eqv? search-var p-name)
                                (proc-val (procedure b-var body e))
-                               (apply-env saved-env search-var))))))
+                               (apply-env saved-env search-var)))
+           (extend-env-rec* (p-names b-vars bodies saved-env)
+                            (apply-extend-env-rec*
+                             e p-names b-vars bodies saved-env search-var)))))
+
+;; apply-extend-env-rec* :
+;;   Env * Listof(Var) * Listof(Var) * Listof(Exp) * Env * Var -> ExpVal
+(define apply-extend-env-rec*
+  (lambda (env p-names b-vars bodies saved-env search-var)
+    (if (null? p-names)
+        (apply-env saved-env search-var)
+        (if (eqv? search-var (car p-names))
+            (proc-val (procedure (car b-vars) (car bodies) env))
+            (apply-extend-env-rec*
+             env
+             (cdr p-names) (cdr b-vars) (cdr bodies) saved-env
+             search-var)))))
 
 (define report-no-binding-found
   (lambda (search-var)

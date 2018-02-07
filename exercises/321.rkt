@@ -2,11 +2,8 @@
 
 ;;; Examples:
 
-;; % The value of the following program is 12
-;; letrec double(x)
-;;        = if zero?(x) then 0 else -((double -(x, 1)), -2)
-;; in (double 6)
-
+;; % The value of the following program is 5
+;; let add = proc (x, y) -(x, -(0, y)) in (add 2 3)
 
 ;;; Grammatical specification:
 
@@ -36,14 +33,11 @@
      ("let" identifier "=" expression "in" expression)
      let-exp)
     (expression
-     ("proc" "(" identifier ")" expression)
+     ("proc" "(" (separated-list identifier ",") ")" expression)
      proc-exp)
     (expression
-     ("(" expression expression ")")
-     call-exp)
-    (expression
-     ("letrec" identifier "(" identifier ")" "=" expression "in" expression)
-     letrec-exp)))
+     ("(" expression (arbno expression) ")")
+     call-exp)))
 
 
 ;;; Syntax data types:
@@ -71,16 +65,11 @@
    (exp1 expression?)
    (body expression?))
   (proc-exp
-   (var identifier?)
+   (var-list (list-of identifier?))
    (body expression?))
   (call-exp
    (rator expression?)
-   (rand expression?))
-  (letrec-exp
-   (proc-name identifier?)
-   (bound-var identifier?)
-   (proc-body expression?)
-   (letrec-body expression?)))
+   (rand-list (list-of expression?))))
 
 (define identifier?
   (lambda (x)
@@ -90,16 +79,19 @@
 ;; procedure : Var * Exp * Env -> Proc
 (define-datatype proc proc?
   (procedure
-   (var identifier?)
+   (var-list (list-of identifier?))
    (body expression?)
    (saved-env environment?)))
 
 ;; apply-procedure : Proc * ExpVal -> ExpVal
 (define apply-procedure
-  (lambda (proc1 val)
+  (lambda (proc1 val-list)
     (cases proc proc1
-           (procedure (var body saved-env)
-                      (value-of body (extend-env var val saved-env))))))
+           (procedure (var-list body saved-env)
+                      (value-of body
+                                (extend-env* var-list
+                                             val-list
+                                             saved-env))))))
 
 
 ;;; Expressed values:
@@ -179,15 +171,13 @@
                     (let ((val1 (value-of exp1 env)))
                       (value-of body
                                 (extend-env var val1 env))))
-           (proc-exp (var body)
-                     (proc-val (procedure var body env)))
-           (call-exp (rator rand)
+           (proc-exp (var-list body)
+                     (proc-val (procedure var-list body env)))
+           (call-exp (rator rand-list)
                      (let ((proc (expval->proc (value-of rator env)))
-                           (arg (value-of rand env)))
-                       (apply-procedure proc arg)))
-           (letrec-exp (proc-name bound-var proc-body letrec-body)
-                       (value-of letrec-body
-                                 (extend-env-rec proc-name bound-var proc-body env))))))
+                           (args (map (lambda (rand) (value-of rand env))
+                                      rand-list)))
+                       (apply-procedure proc args))))))
 
 ;; init-env : () -> Env
 (define init-env
@@ -197,21 +187,27 @@
 
 ;;; Environment:
 
-;; Env = (empty-env)
-;;     | (extend-env Var ExpVal Env)
-;;     | (extend-env-rec Var Var Exp Env)
+;; Env = (empty-env) | (extend-env Var ExpVal Env)
 
 (define-datatype environment environment?
   (empty-env)
   (extend-env
    (saved-var symbol?)
    (saved-val expval?)
-   (saved-env environment?))
-  (extend-env-rec
-   (p-name identifier?)
-   (b-var identifier?)
-   (body expression?)
    (saved-env environment?)))
+
+;; extend-env* : Listof(Var) * Listof(SchemeVal) * Env -> Env
+;; usage: (extend-env* (var1 ... vark) (val1 ... valk) [f]) = [g]
+;;        where g(var) = vali    if var = vari for some i such that 1 <= i <= k
+;;                     | f(var)  otherwise
+(define extend-env*
+  (lambda (var-list val-list env)
+    (if (null? var-list)
+        env
+        (let ((var (car var-list))
+              (val (car val-list)))
+          (extend-env* (cdr var-list) (cdr val-list)
+                       (extend-env var val env))))))
 
 ;; apply-env : Env * Var -> ExpVal
 (define apply-env
@@ -222,11 +218,7 @@
            (extend-env (saved-var saved-val saved-env)
                        (if (eqv? search-var saved-var)
                            saved-val
-                           (apply-env saved-env search-var)))
-           (extend-env-rec (p-name b-var body saved-env)
-                           (if (eqv? search-var p-name)
-                               (proc-val (procedure b-var body e))
-                               (apply-env saved-env search-var))))))
+                           (apply-env saved-env search-var))))))
 
 (define report-no-binding-found
   (lambda (search-var)
