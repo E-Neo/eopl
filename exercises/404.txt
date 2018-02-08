@@ -1,0 +1,6 @@
+               (value-of exp0 e s0) = (val0, s1)
+               (value-of exp1 e s1) = (val1, s2)
+                              ...
+               (value-of expn e sn) = (valn, sn+1)
+----------------------------------------------------------------------
+ (value-of (begin-exp (exp0, exp1, ..., expn)), e, s0) = (valn, sn+1)

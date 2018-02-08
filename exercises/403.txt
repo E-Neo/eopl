@@ -1,0 +1,5 @@
+         (value-of rator e s0) = (val1, s1)
+         (value-of rand  e s1) = (val2, s2)
+----------------------------------------------------
+ (value-of (call-exp rator rand) e s0)
+ = ((apply-procedure (expval->proc val1) val2), s2)

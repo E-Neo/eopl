@@ -3,10 +3,31 @@
 ;;; Examples:
 
 ;; % The value of the following program is 1
-;; letrec
-;;   even(x) = if zero?(x) then 1 else (odd -(x, 1))
-;;   odd(x)  = if zero?(x) then 0 else (even -(x, 1))
-;; in (odd 13)
+;; let x = newref(0)
+;; in letrec even(dummy)
+;;           = if zero?(deref(x)) then 1
+;;             else begin
+;;                    setref(x, -(deref(x), 1));
+;;                    (odd 888)
+;;                  end
+;;           odd(dummy)
+;;           = if zero?(deref(x)) then 0
+;;             else begin
+;;                    setref(x, -(deref(x), 1));
+;;                    (even 888)
+;;                  end
+;;    in begin setref(x, 13); (odd 888) end
+
+;; % The value of the following program is -1
+;; let g = let counter = newref(0)
+;;         in proc(dummy)
+;;              begin
+;;                setref(counter, -(deref(counter), -1));
+;;                deref(counter)
+;;              end
+;; in let a = (g 11)
+;;    in let b = (g 11)
+;;       in -(a, b)
 
 
 ;;; Grammatical specification:
@@ -46,7 +67,19 @@
      ("letrec"
       (arbno identifier "(" identifier ")" "=" expression)
       "in" expression)
-     letrec-exp)))
+     letrec-exp)
+    (expression
+     ("begin" expression (arbno ";" expression) "end")
+     begin-exp)
+    (expression
+     ("newref" "(" expression ")")
+     newref-exp)
+    (expression
+     ("deref" "(" expression ")")
+     deref-exp)
+    (expression
+     ("setref" "(" expression "," expression ")")
+     setref-exp)))
 
 
 ;;; Syntax data types:
@@ -83,7 +116,17 @@
    (proc-names (list-of identifier?))
    (bound-vars (list-of identifier?))
    (proc-bodies (list-of expression?))
-   (letrec-body expression?)))
+   (letrec-body expression?))
+  (begin-exp
+   (exp1 expression?)
+   (exps (list-of expression?)))
+  (newref-exp
+   (exp1 expression?))
+  (deref-exp
+   (exp1 expression?))
+  (setref-exp
+   (exp1 expression?)
+   (exp2 expression?)))
 
 (define identifier?
   (lambda (x)
@@ -113,7 +156,9 @@
   (bool-val
    (bool boolean?))
   (proc-val
-   (proc proc?)))
+   (proc proc?))
+  (ref-val
+   (ref reference?)))
 
 ;; expval->num : ExpVal -> Int
 (define expval->num
@@ -136,6 +181,13 @@
            (proc-val (proc) proc)
            (else (report-expval-extractor-error 'proc val)))))
 
+;; expval->ref : ExpVal -> Ref
+(define expval->ref
+  (lambda (val)
+    (cases expval val
+           (ref-val (ref) ref)
+           (else (report-expval-extractor-error 'reference val)))))
+
 (define report-expval-extractor-error
   (lambda (s val)
     (eopl:error s "ExpVal extractor error: ~s" val)))
@@ -151,6 +203,7 @@
 ;; value-of-program : Program -> ExpVal
 (define value-of-program
   (lambda (pgm)
+    (initialize-store!)
     (cases program pgm
            (a-program (exp1)
                       (value-of exp1 (init-env))))))
@@ -191,7 +244,29 @@
            (letrec-exp (proc-names bound-vars proc-bodies letrec-body)
                        (value-of letrec-body
                                  (extend-env-rec*
-                                  proc-names bound-vars proc-bodies env))))))
+                                  proc-names bound-vars proc-bodies env)))
+           (begin-exp (exp1 exps)
+                      (letrec
+                          ((value-of-begins
+                            (lambda (e1 es)
+                              (let ((v1 (value-of e1 env)))
+                                (if (null? es)
+                                    v1
+                                    (value-of-begins (car es) (cdr es)))))))
+                        (value-of-begins exp1 exps)))
+           (newref-exp (exp1)
+                       (let ((v1 (value-of exp1 env)))
+                         (ref-val (newref v1))))
+           (deref-exp (exp1)
+                      (let ((v1 (value-of exp1 env)))
+                        (let ((ref1 (expval->ref v1)))
+                          (deref ref1))))
+           (setref-exp (exp1 exp2)
+                       (let ((ref (expval->ref (value-of exp1 env))))
+                         (let ((val2 (value-of exp2 env)))
+                           (begin
+                             (setref! ref val2)
+                             val2)))))))
 
 ;; init-env : () -> Env
 (define init-env
@@ -247,6 +322,69 @@
 (define report-no-binding-found
   (lambda (search-var)
     (eopl:error 'apply-env "No binding for ~s" search-var)))
+
+
+;;; Store:
+
+;; empty-store : () -> Sto
+(define empty-store
+  (lambda () '()))
+
+;; usage: A Scheme variable containing the current state of the store.
+;;        Initially set to a dummy value.
+(define the-store 'uninitialized)
+
+;; get-store : () -> Sto
+(define get-store
+  (lambda () the-store))
+
+;; initialize-store! : () -> Unspecified
+;; usage: (initialize-store!) sets the-store to the empty store
+(define initialize-store!
+  (lambda ()
+    (set! the-store (empty-store))))
+
+;; reference? : SchemeVal -> Bool
+(define reference?
+  (lambda (x) (integer? x)))
+
+;; newref : ExpVal -> Ref
+(define newref
+  (lambda (val)
+    (let ((next-ref (length the-store)))
+      (set! the-store (append the-store (list val)))
+      next-ref)))
+
+;; deref : Ref -> ExpVal
+(define deref
+  (lambda (ref)
+    (list-ref the-store ref)))
+
+;; setref! : Ref * ExpVal -> Unspecified
+;; usage: Sets the-store to a state like the original, but with position ref
+;;        containing val.
+(define setref!
+  (lambda (ref val)
+    (set! the-store
+          (letrec
+              ((setref-inner
+                ;; usage: (setref-inner store1 ref1) returns a list like
+                ;;        store1, except that position ref1 contains val.
+                (lambda (store1 ref1)
+                  (cond ((null? store1)
+                         (report-invalid-reference ref the-store))
+                        ((zero? ref1)
+                         (cons val (cdr store1)))
+                        (else
+                         (cons (car store1)
+                               (setref-inner (cdr store1) (- ref 1))))))))
+            (setref-inner the-store ref)))))
+
+(define report-invalid-reference
+  (lambda (ref the-store)
+    (eopl:error 'setref
+                "illegal reference ~s in store ~s"
+                ref the-store)))
 
 
 ;;; Scanner and Parser:

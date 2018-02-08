@@ -1,0 +1,3 @@
+setref! takes linear time because setref-inner takes linear time.
+If length, append, and list-ref take linear time,
+then newref and deref also take linear time.
