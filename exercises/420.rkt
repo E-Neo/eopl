@@ -3,31 +3,24 @@
 ;;; Examples:
 
 ;; % The value of the following program is 1
-;; let x = newref(0)
-;; in letrec even(dummy)
-;;           = if zero?(deref(x)) then 1
-;;             else begin
-;;                    setref(x, -(deref(x), 1));
-;;                    (odd 888)
-;;                  end
-;;           odd(dummy)
-;;           = if zero?(deref(x)) then 0
-;;             else begin
-;;                    setref(x, -(deref(x), 1));
-;;                    (even 888)
-;;                  end
-;;    in begin setref(x, 13); (odd 888) end
+;; let x = 0
+;; in letmutable y = x
+;;    in begin
+;;         set y = 1;
+;;         -(x, -(0, y))
+;;       end
 
-;; % The value of the following program is -1
-;; let g = let counter = newref(0)
-;;         in proc(dummy)
-;;              begin
-;;                setref(counter, -(deref(counter), -1));
-;;                deref(counter)
-;;              end
-;; in let a = (g 11)
-;;    in let b = (g 11)
-;;       in -(a, b)
+;; % The value of the following program is 12
+;; letmutable x = 3
+;; in letmutable res = 0
+;;    in letrec times4(dummy)
+;;              = if zero?(x) then res
+;;                else begin
+;;                       set x = -(x, 1);
+;;                       set res = -(res, -4);
+;;                       (times4 888)
+;;                     end
+;;       in (times4 888)
 
 
 ;;; Grammatical specification:
@@ -72,14 +65,11 @@
      ("begin" expression (arbno ";" expression) "end")
      begin-exp)
     (expression
-     ("newref" "(" expression ")")
-     newref-exp)
+     ("set" identifier "=" expression)
+     assign-exp)
     (expression
-     ("deref" "(" expression ")")
-     deref-exp)
-    (expression
-     ("setref" "(" expression "," expression ")")
-     setref-exp)))
+     ("letmutable" identifier "=" expression "in" expression)
+     letmutable-exp)))
 
 
 ;;; Syntax data types:
@@ -120,13 +110,13 @@
   (begin-exp
    (exp1 expression?)
    (exps (list-of expression?)))
-  (newref-exp
+  (assign-exp
+   (var identifier?)
    (exp1 expression?))
-  (deref-exp
-   (exp1 expression?))
-  (setref-exp
+  (letmutable-exp
+   (var identifier?)
    (exp1 expression?)
-   (exp2 expression?)))
+   (body expression?)))
 
 (define identifier?
   (lambda (x)
@@ -145,7 +135,9 @@
   (lambda (proc1 val)
     (cases proc proc1
            (procedure (var body saved-env)
-                      (value-of body (extend-env var val saved-env))))))
+                      (value-of body
+                                (extend-env var (expval-val val)
+                                            saved-env))))))
 
 
 ;;; Expressed values:
@@ -156,9 +148,7 @@
   (bool-val
    (bool boolean?))
   (proc-val
-   (proc proc?))
-  (ref-val
-   (ref reference?)))
+   (proc proc?)))
 
 ;; expval->num : ExpVal -> Int
 (define expval->num
@@ -181,16 +171,36 @@
            (proc-val (proc) proc)
            (else (report-expval-extractor-error 'proc val)))))
 
-;; expval->ref : ExpVal -> Ref
-(define expval->ref
-  (lambda (val)
-    (cases expval val
-           (ref-val (ref) ref)
-           (else (report-expval-extractor-error 'reference val)))))
-
 (define report-expval-extractor-error
   (lambda (s val)
     (eopl:error s "ExpVal extractor error: ~s" val)))
+
+
+;;; Denoted values:
+
+(define-datatype denval denval?
+  (expval-val
+   (val expval?))
+  (ref-val
+   (ref reference?)))
+
+;; denval->expval : DenVal -> ExpVal
+(define denval->expval
+  (lambda (val)
+    (cases denval val
+           (expval-val (val) val)
+           (else (report-denval-extractor-error 'expval val)))))
+
+;; denval->ref : DenVal -> Ref(ExpVal)
+(define denval->ref
+  (lambda (val)
+    (cases denval val
+           (ref-val (ref) ref)
+           (else (report-denval-extractor-error 'ref val)))))
+
+(define report-denval-extractor-error
+  (lambda (s val)
+    (eopl:error s "DenVal extractor error: ~s" val)))
 
 
 ;;; Interpreter:
@@ -230,11 +240,15 @@
                      (if (expval->bool val1)
                          (value-of exp2 env)
                          (value-of exp3 env))))
-           (var-exp (var) (apply-env env var))
+           (var-exp (var)
+                    (let ((den (apply-env env var)))
+                      (cases denval den
+                             (expval-val (val) val)
+                             (ref-val (ref) (deref ref)))))
            (let-exp (var exp1 body)
                     (let ((val1 (value-of exp1 env)))
                       (value-of body
-                                (extend-env var val1 env))))
+                                (extend-env var (expval-val val1) env))))
            (proc-exp (var body)
                      (proc-val (procedure var body env)))
            (call-exp (rator rand)
@@ -254,19 +268,16 @@
                                     v1
                                     (value-of-begins (car es) (cdr es)))))))
                         (value-of-begins exp1 exps)))
-           (newref-exp (exp1)
-                       (let ((v1 (value-of exp1 env)))
-                         (ref-val (newref v1))))
-           (deref-exp (exp1)
-                      (let ((v1 (value-of exp1 env)))
-                        (let ((ref1 (expval->ref v1)))
-                          (deref ref1))))
-           (setref-exp (exp1 exp2)
-                       (let ((ref (expval->ref (value-of exp1 env))))
-                         (let ((val2 (value-of exp2 env)))
-                           (begin
-                             (setref! ref val2)
-                             val2)))))))
+           (assign-exp (var exp1)
+                       (begin
+                         (setref! (denval->ref (apply-env env var))
+                                  (value-of exp1 env))
+                         (num-val 27)))
+           (letmutable-exp (var exp1 body)
+                           (let ((val1 (value-of exp1 env)))
+                             (value-of body
+                                       (extend-env var (ref-val (newref val1))
+                                                   env)))))))
 
 ;; init-env : () -> Env
 (define init-env
@@ -277,14 +288,14 @@
 ;;; Environment:
 
 ;; Env = (empty-env)
-;;     | (extend-env Var ExpVal Env)
+;;     | (extend-env Var DenVal Env)
 ;;     | (extend-env-rec* Listof(Var) Listof(Var) Listof(Exp) Env)
 
 (define-datatype environment environment?
   (empty-env)
   (extend-env
    (saved-var symbol?)
-   (saved-val expval?)
+   (saved-val denval?)
    (saved-env environment?))
   (extend-env-rec*
    (p-names (list-of identifier?))
@@ -292,7 +303,7 @@
    (bodies (list-of expression?))
    (saved-env environment?)))
 
-;; apply-env : Env * Var -> ExpVal
+;; apply-env : Env * Var -> DenVal
 (define apply-env
   (lambda (e search-var)
     (cases environment e
@@ -307,13 +318,13 @@
                              e p-names b-vars bodies saved-env search-var)))))
 
 ;; apply-extend-env-rec* :
-;;   Env * Listof(Var) * Listof(Var) * Listof(Exp) * Env * Var -> ExpVal
+;;   Env * Listof(Var) * Listof(Var) * Listof(Exp) * Env * Var -> DenVal
 (define apply-extend-env-rec*
   (lambda (env p-names b-vars bodies saved-env search-var)
     (if (null? p-names)
         (apply-env saved-env search-var)
         (if (eqv? search-var (car p-names))
-            (proc-val (procedure (car b-vars) (car bodies) env))
+            (expval-val (proc-val (procedure (car b-vars) (car bodies) env)))
             (apply-extend-env-rec*
              env
              (cdr p-names) (cdr b-vars) (cdr bodies) saved-env
@@ -377,7 +388,7 @@
                          (cons val (cdr store1)))
                         (else
                          (cons (car store1)
-                               (setref-inner (cdr store1) (- ref 1))))))))
+                               (setref-inner (cdr store1) (- ref1 1))))))))
             (setref-inner the-store ref)))))
 
 (define report-invalid-reference

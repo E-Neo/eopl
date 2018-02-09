@@ -2,32 +2,17 @@
 
 ;;; Examples:
 
-;; % The value of the following program is 1
-;; let x = newref(0)
-;; in letrec even(dummy)
-;;           = if zero?(deref(x)) then 1
-;;             else begin
-;;                    setref(x, -(deref(x), 1));
-;;                    (odd 888)
-;;                  end
-;;           odd(dummy)
-;;           = if zero?(deref(x)) then 0
-;;             else begin
-;;                    setref(x, -(deref(x), 1));
-;;                    (even 888)
-;;                  end
-;;    in begin setref(x, 13); (odd 888) end
-
-;; % The value of the following program is -1
-;; let g = let counter = newref(0)
-;;         in proc(dummy)
-;;              begin
-;;                setref(counter, -(deref(counter), -1));
-;;                deref(counter)
-;;              end
-;; in let a = (g 11)
-;;    in let b = (g 11)
-;;       in -(a, b)
+;; % The value of the following program represents list (4 3 1)
+;; let x = newref(4)
+;; in list(deref(x),
+;;         begin
+;;           setref(x, 3);
+;;           deref(x)
+;;         end,
+;;         begin
+;;           setref(x, 1);
+;;           deref(x)
+;;         end)
 
 
 ;;; Grammatical specification:
@@ -79,7 +64,10 @@
      deref-exp)
     (expression
      ("setref" "(" expression "," expression ")")
-     setref-exp)))
+     setref-exp)
+    (expression
+     ("list" "(" (separated-list expression ",") ")")
+     list-exp)))
 
 
 ;;; Syntax data types:
@@ -126,7 +114,9 @@
    (exp1 expression?))
   (setref-exp
    (exp1 expression?)
-   (exp2 expression?)))
+   (exp2 expression?))
+  (list-exp
+   (exps (list-of expression?))))
 
 (define identifier?
   (lambda (x)
@@ -158,7 +148,9 @@
   (proc-val
    (proc proc?))
   (ref-val
-   (ref reference?)))
+   (ref reference?))
+  (list-val
+   (lst list?)))
 
 ;; expval->num : ExpVal -> Int
 (define expval->num
@@ -187,6 +179,13 @@
     (cases expval val
            (ref-val (ref) ref)
            (else (report-expval-extractor-error 'reference val)))))
+
+;; expval->list : ExpVal -> List
+(define expval->list
+  (lambda (val)
+    (cases expval val
+           (bool-val (lst) lst)
+           (else (report-expval-extractor-error 'list val)))))
 
 (define report-expval-extractor-error
   (lambda (s val)
@@ -266,7 +265,14 @@
                          (let ((val2 (value-of exp2 env)))
                            (begin
                              (setref! ref val2)
-                             val2)))))))
+                             val2))))
+           (list-exp (exps)
+                     (if (null? exps)
+                         (list-val '())
+                         (list-val
+                          (append (list (value-of (car exps) env))
+                                  (list (value-of (list-exp (cdr exps))
+                                                  env)))))))))
 
 ;; init-env : () -> Env
 (define init-env

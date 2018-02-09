@@ -1,0 +1,6 @@
+     (value-of exp1 e s0) = (val1, s1)
+--------------------------------------------
+ (value-of (let-exp var exp1 body) e s0)
+ = (value-of body [var=l]e [e(var)=val1]s1)
+
+where l is a location not in the domain of s1

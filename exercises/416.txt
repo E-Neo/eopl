@@ -1,0 +1,20 @@
+let times4 = 0
+in begin
+     set times4 = proc (x)
+                    if zero?(x) then 0
+                    else -((times4 -(x, 1)), -4);
+     (times4 3)
+   end
+
+% times4 = 0
+% times4 = proc (x)
+%            if zero?(x) then 0
+%            else -((times4 -(x, 1)), -4)
+% (times4 3)
+% -((times4 2), -4)
+% -(-((times4 1), -4), -4)
+% -(-(-((times4 0), -4), -4), -4)
+% -(-(-(0, -4), -4), -4)
+% -(-(4, -4), -4)
+% -(8, -4)
+% 12

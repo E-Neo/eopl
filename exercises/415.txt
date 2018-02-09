@@ -1,0 +1,6 @@
+In EXPLICIT-REFS:
+  DenVal = ExpVal
+we store the expressed value in the environment,
+while in IMPLICIT-REFS:
+  DenVal = Ref(ExpVal)
+we store the location of the expressed value in the environment.

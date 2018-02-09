@@ -76,14 +76,14 @@
     (symbol? x)))
 
 ;; proc? : SchemeVal -> Bool
-;; procedure : Var * Exp * Env -> Proc
+;; procedure : Listof(Var) * Exp * Env -> Proc
 (define-datatype proc proc?
   (procedure
    (var-list (list-of identifier?))
    (body expression?)
    (saved-env environment?)))
 
-;; apply-procedure : Proc * ExpVal -> ExpVal
+;; apply-procedure : Proc * Listof(ExpVal) -> ExpVal
 (define apply-procedure
   (lambda (proc1 val-list)
     (cases proc proc1
@@ -196,7 +196,7 @@
    (saved-val expval?)
    (saved-env environment?)))
 
-;; extend-env* : Listof(Var) * Listof(SchemeVal) * Env -> Env
+;; extend-env* : Listof(Var) * Listof(ExpVal) * Env -> Env
 ;; usage: (extend-env* (var1 ... vark) (val1 ... valk) [f]) = [g]
 ;;        where g(var) = vali    if var = vari for some i such that 1 <= i <= k
 ;;                     | f(var)  otherwise
