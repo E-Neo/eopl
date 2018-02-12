@@ -1,0 +1,1 @@
+No, a expressed value can have only one type or no type.

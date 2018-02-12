@@ -1,0 +1,38 @@
+newpair-exp:
+
+                       (value-of exp1 e s0) = (val1, s1)
+                       (value-of exp2 e s1) = (val2, s2)
+----------------------------------------------------------------------------
+ (value-of (newpair-exp exp1 exp2) e s0) = (pair(m, m), [n=val2][m=val1]s2)
+
+where m, n are locations not in the domain of s2.
+
+
+left-exp:
+
+        (value-of exp1 e s0) = (p, s1)
+------------------------------------------------
+ (value-of (left-exp exp1) e s0) = (p.left, s1)
+
+
+right-exp:
+
+          (value-of exp1 e s0) = (p, s1)
+--------------------------------------------------
+ (value-of (right-exp exp1) e s0) = (p.right, s1)
+
+
+setleft-exp:
+
+                (value-of exp1 e s0) = (p, s1)
+               (value-of exp2 e s1) = (val2, s2)
+-----------------------------------------------------------------
+ (value-of (setleft-exp exp1 exp2) e s0) = (82, [p.left=val2]s2)
+
+
+setright-exp:
+
+                (value-of exp1 e s0) = (p, s1)
+               (value-of exp2 e s1) = (val2, s2)
+-------------------------------------------------------------------
+ (value-of (setright-exp exp1 exp2) e s0) = (83, [p.right=val2]s2)

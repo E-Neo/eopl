@@ -145,16 +145,16 @@
 
 ;;; Environment:
 
-;; Env = (empty-env) | (extend-env Var SchemeVal Env)
+;; Env = (empty-env) | (extend-env Var ExpVal Env)
 
 (define-datatype env environment?
   (empty-env)
   (extend-env
    (saved-var symbol?)
-   (saved-val (lambda (x) #t))
+   (saved-val expval?)
    (saved-env environment?)))
 
-;; extend-env* : Listof(Var) * Listof(SchemeVal) * Env -> Env
+;; extend-env* : Listof(Var) * Listof(ExpVal) * Env -> Env
 ;; usage: (extend-env* (var1 ... vark) (val1 ... valk) [f]) = [g]
 ;;        where g(var) = vali    if var = vari for some i such that 1 <= i <= k
 ;;                     | f(var)  otherwise
@@ -167,7 +167,7 @@
           (extend-env* (cdr var-list) (cdr val-list)
                        (extend-env var val env))))))
 
-;; apply-env : Env * Var -> SchemeVal
+;; apply-env : Env * Var -> ExpVal
 (define apply-env
   (lambda (e search-var)
     (cases env e

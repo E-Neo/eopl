@@ -1,0 +1,441 @@
+#lang eopl
+
+;;; Examples:
+
+;; % The value of the following program is 88
+;; let glo = newpair(11, 12)
+;; in let f = proc (loc)
+;;              let d1 = setright(loc, left(loc))
+;;              in let d2 = setleft(glo, 99)
+;;                 in -(left(loc), right(loc))
+;; in (f glo)
+
+
+;;; Grammatical specification:
+
+(define the-lexical-spec
+  '((whitespace (whitespace) skip)
+    (comment ("%" (arbno (not #\newline))) skip)
+    (identifier
+     (letter (arbno (or letter digit "_" "-" "?")))
+     symbol)
+    (number (digit (arbno digit)) number)
+    (number ("-" digit (arbno digit)) number)))
+
+(define the-grammar
+  '((program (expression) a-program)
+    (expression (number) const-exp)
+    (expression
+     ("-" "(" expression "," expression ")")
+     diff-exp)
+    (expression
+     ("zero?" "(" expression ")")
+     zero?-exp)
+    (expression
+     ("if" expression "then" expression "else" expression)
+     if-exp)
+    (expression (identifier) var-exp)
+    (expression
+     ("let" identifier "=" expression "in" expression)
+     let-exp)
+    (expression
+     ("proc" "(" identifier ")" expression)
+     proc-exp)
+    (expression
+     ("(" expression expression ")")
+     call-exp)
+    (expression
+     ("letrec"
+      (arbno identifier "(" identifier ")" "=" expression)
+      "in" expression)
+     letrec-exp)
+    (expression
+     ("begin" expression (arbno ";" expression) "end")
+     begin-exp)
+    (expression
+     ("set" identifier "=" expression)
+     assign-exp)
+    (expression
+     ("newpair" "(" expression "," expression ")")
+     newpair-exp)
+    (expression
+     ("left" "(" expression ")")
+     left-exp)
+    (expression
+     ("right" "(" expression ")")
+     right-exp)
+    (expression
+     ("setleft" "(" expression "," expression ")")
+     setleft-exp)
+    (expression
+     ("setright" "(" expression "," expression ")")
+     setright-exp)))
+
+
+;;; Syntax data types:
+
+(define-datatype program program?
+  (a-program
+   (exp1 expression?)))
+
+(define-datatype expression expression?
+  (const-exp
+   (num number?))
+  (diff-exp
+   (exp1 expression?)
+   (exp2 expression?))
+  (zero?-exp
+   (exp1 expression?))
+  (if-exp
+   (exp1 expression?)
+   (exp2 expression?)
+   (exp3 expression?))
+  (var-exp
+   (var identifier?))
+  (let-exp
+   (var identifier?)
+   (exp1 expression?)
+   (body expression?))
+  (proc-exp
+   (var identifier?)
+   (body expression?))
+  (call-exp
+   (rator expression?)
+   (rand expression?))
+  (letrec-exp
+   (proc-names (list-of identifier?))
+   (bound-vars (list-of identifier?))
+   (proc-bodies (list-of expression?))
+   (letrec-body expression?))
+  (begin-exp
+   (exp1 expression?)
+   (exps (list-of expression?)))
+  (assign-exp
+   (var identifier?)
+   (exp1 expression?))
+  (newpair-exp
+   (exp1 expression?)
+   (exp2 expression?))
+  (left-exp
+   (exp1 expression?))
+  (right-exp
+   (exp1 expression?))
+  (setleft-exp
+   (exp1 expression?)
+   (exp2 expression?))
+  (setright-exp
+   (exp1 expression?)
+   (exp2 expression?)))
+
+(define identifier?
+  (lambda (x)
+    (symbol? x)))
+
+;; proc? : SchemeVal -> Bool
+;; procedure : Var * Exp * Env -> Proc
+(define-datatype proc proc?
+  (procedure
+   (var identifier?)
+   (body expression?)
+   (saved-env environment?)))
+
+;; apply-procedure : Proc * ExpVal -> ExpVal
+(define apply-procedure
+  (lambda (proc1 val)
+    (cases proc proc1
+           (procedure (var body saved-env)
+                      (value-of body
+                                (extend-env var (newref val) saved-env))))))
+
+
+;;; Expressed values:
+
+(define-datatype expval expval?
+  (num-val
+   (num number?))
+  (bool-val
+   (bool boolean?))
+  (proc-val
+   (proc proc?))
+  (mutpair-val
+   (p mutpair?)))
+
+;; expval->num : ExpVal -> Int
+(define expval->num
+  (lambda (val)
+    (cases expval val
+           (num-val (num) num)
+           (else (report-expval-extractor-error 'num val)))))
+
+;; expval->bool : ExpVal -> Bool
+(define expval->bool
+  (lambda (val)
+    (cases expval val
+           (bool-val (bool) bool)
+           (else (report-expval-extractor-error 'bool val)))))
+
+;; expval->proc : ExpVal -> Proc
+(define expval->proc
+  (lambda (val)
+    (cases expval val
+           (proc-val (proc) proc)
+           (else (report-expval-extractor-error 'proc val)))))
+
+;; expval->mutpair : ExpVal -> MutPair
+(define expval->mutpair
+  (lambda (val)
+    (cases expval val
+           (mutpair-val (p) p)
+           (else (report-expval-extractor-error 'mutable-pair val)))))
+
+(define report-expval-extractor-error
+  (lambda (s val)
+    (eopl:error s "ExpVal extractor error: ~s" val)))
+
+
+;;; Mutable pairs:
+
+(define-datatype mutpair mutpair?
+  (a-pair
+   (left-loc reference?)
+   (right-loc reference?)))
+
+;; make-pair : ExpVal * ExpVal -> MutPair
+(define make-pair
+  (lambda (val1 val2)
+    (a-pair (newref val1)
+            (newref val2))))
+
+;; left : MutPair -> ExpVal
+(define left
+  (lambda (p)
+    (cases mutpair p
+           (a-pair (left-loc right-loc)
+                   (deref left-loc)))))
+
+;; right : MutPair -> ExpVal
+(define right
+  (lambda (p)
+    (cases mutpair p
+           (a-pair (left-loc right-loc)
+                   (deref right-loc)))))
+
+;; setleft : MutPair * ExpVal -> Unspecified
+(define setleft
+  (lambda (p val)
+    (cases mutpair p
+           (a-pair (left-loc right-loc)
+                   (setref! left-loc val)))))
+
+;; setright : MutPair * ExpVal -> Unspecified
+(define setright
+  (lambda (p val)
+    (cases mutpair p
+           (a-pair (left-loc right-loc)
+                   (setref! right-loc val)))))
+
+
+;;; Interpreter:
+
+;; run : String -> ExpVal
+(define run
+  (lambda (s)
+    (value-of-program (scan&parse s))))
+
+;; value-of-program : Program -> ExpVal
+(define value-of-program
+  (lambda (pgm)
+    (initialize-store!)
+    (cases program pgm
+           (a-program (exp1)
+                      (value-of exp1 (init-env))))))
+
+;; value-of : Exp * Env -> ExpVal
+(define value-of
+  (lambda (exp env)
+    (cases expression exp
+           (const-exp (num) (num-val num))
+           (diff-exp (exp1 exp2)
+                     (let ((val1 (value-of exp1 env))
+                           (val2 (value-of exp2 env)))
+                       (let ((num1 (expval->num val1))
+                             (num2 (expval->num val2)))
+                         (num-val (- num1 num2)))))
+           (zero?-exp (exp1)
+                      (let ((val1 (value-of exp1 env)))
+                        (let ((num1 (expval->num val1)))
+                          (if (zero? num1)
+                              (bool-val #t)
+                              (bool-val #f)))))
+           (if-exp (exp1 exp2 exp3)
+                   (let ((val1 (value-of exp1 env)))
+                     (if (expval->bool val1)
+                         (value-of exp2 env)
+                         (value-of exp3 env))))
+           (var-exp (var) (deref (apply-env env var)))
+           (let-exp (var exp1 body)
+                    (let ((val1 (value-of exp1 env)))
+                      (value-of body
+                                (extend-env var (newref val1) env))))
+           (proc-exp (var body)
+                     (proc-val (procedure var body env)))
+           (call-exp (rator rand)
+                     (let ((proc (expval->proc (value-of rator env)))
+                           (arg (value-of rand env)))
+                       (apply-procedure proc arg)))
+           (letrec-exp (proc-names bound-vars proc-bodies letrec-body)
+                       (value-of letrec-body
+                                 (extend-env-rec*
+                                  proc-names bound-vars proc-bodies env)))
+           (begin-exp (exp1 exps)
+                      (letrec
+                          ((value-of-begins
+                            (lambda (e1 es)
+                              (let ((v1 (value-of e1 env)))
+                                (if (null? es)
+                                    v1
+                                    (value-of-begins (car es) (cdr es)))))))
+                        (value-of-begins exp1 exps)))
+           (assign-exp (var exp1)
+                       (begin (setref! (apply-env env var)
+                                       (value-of exp1 env))
+                              (num-val 27)))
+           (newpair-exp (exp1 exp2)
+                        (mutpair-val (make-pair (value-of exp1 env)
+                                                (value-of exp2 env))))
+           (left-exp (exp1)
+                     (left (expval->mutpair (value-of exp1 env))))
+           (right-exp (exp1)
+                      (right (expval->mutpair (value-of exp1 env))))
+           (setleft-exp (exp1 exp2)
+                        (begin (setleft (expval->mutpair (value-of exp1 env))
+                                        (value-of exp2 env))
+                               (num-val 82)))
+           (setright-exp (exp1 exp2)
+                         (begin (setright (expval->mutpair (value-of exp1 env))
+                                          (value-of exp2 env))
+                                (num-val 83))))))
+
+;; init-env : () -> Env
+(define init-env
+  (lambda ()
+    (empty-env)))
+
+
+;;; Environment:
+
+;; Env = (empty-env)
+;;     | (extend-env Var Ref(ExpVal) Env)
+;;     | (extend-env-rec* Listof(Var) Listof(Var) Listof(Exp) Env)
+
+(define-datatype environment environment?
+  (empty-env)
+  (extend-env
+   (saved-var symbol?)
+   (saved-ref reference?)
+   (saved-env environment?))
+  (extend-env-rec*
+   (p-names (list-of identifier?))
+   (b-vars (list-of identifier?))
+   (bodies (list-of expression?))
+   (saved-env environment?)))
+
+;; apply-env : Env * Var -> Ref(ExpVal)
+(define apply-env
+  (lambda (e search-var)
+    (cases environment e
+           (empty-env ()
+                      (report-no-binding-found search-var))
+           (extend-env (saved-var saved-ref saved-env)
+                       (if (eqv? search-var saved-var)
+                           saved-ref
+                           (apply-env saved-env search-var)))
+           (extend-env-rec* (p-names b-vars bodies saved-env)
+                            (apply-extend-env-rec*
+                             e p-names b-vars bodies saved-env search-var)))))
+
+;; apply-extend-env-rec* :
+;;   Env * Listof(Var) * Listof(Var) * Listof(Exp) * Env * Var -> Ref(ExpVal)
+(define apply-extend-env-rec*
+  (lambda (env p-names b-vars bodies saved-env search-var)
+    (if (null? p-names)
+        (apply-env saved-env search-var)
+        (if (eqv? search-var (car p-names))
+            (newref (proc-val (procedure (car b-vars) (car bodies) env)))
+            (apply-extend-env-rec*
+             env
+             (cdr p-names) (cdr b-vars) (cdr bodies) saved-env
+             search-var)))))
+
+(define report-no-binding-found
+  (lambda (search-var)
+    (eopl:error 'apply-env "No binding for ~s" search-var)))
+
+
+;;; Store:
+
+;; empty-store : () -> Sto
+(define empty-store
+  (lambda () '()))
+
+;; usage: A Scheme variable containing the current state of the store.
+;;        Initially set to a dummy value.
+(define the-store 'uninitialized)
+
+;; get-store : () -> Sto
+(define get-store
+  (lambda () the-store))
+
+;; initialize-store! : () -> Unspecified
+;; usage: (initialize-store!) sets the-store to the empty store
+(define initialize-store!
+  (lambda ()
+    (set! the-store (empty-store))))
+
+;; reference? : SchemeVal -> Bool
+(define reference?
+  (lambda (x) (integer? x)))
+
+;; newref : ExpVal -> Ref
+(define newref
+  (lambda (val)
+    (let ((next-ref (length the-store)))
+      (set! the-store (append the-store (list val)))
+      next-ref)))
+
+;; deref : Ref -> ExpVal
+(define deref
+  (lambda (ref)
+    (list-ref the-store ref)))
+
+;; setref! : Ref * ExpVal -> Unspecified
+;; usage: Sets the-store to a state like the original, but with position ref
+;;        containing val.
+(define setref!
+  (lambda (ref val)
+    (set! the-store
+          (letrec
+              ((setref-inner
+                ;; usage: (setref-inner store1 ref1) returns a list like
+                ;;        store1, except that position ref1 contains val.
+                (lambda (store1 ref1)
+                  (cond ((null? store1)
+                         (report-invalid-reference ref the-store))
+                        ((zero? ref1)
+                         (cons val (cdr store1)))
+                        (else
+                         (cons (car store1)
+                               (setref-inner (cdr store1) (- ref1 1))))))))
+            (setref-inner the-store ref)))))
+
+(define report-invalid-reference
+  (lambda (ref the-store)
+    (eopl:error 'setref
+                "illegal reference ~s in store ~s"
+                ref the-store)))
+
+
+;;; Scanner and Parser:
+
+(define scan&parse
+  (sllgen:make-string-parser the-lexical-spec the-grammar))
