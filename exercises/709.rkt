@@ -8,7 +8,7 @@
 ;; ------------------------------------------
 ;;  (type-of (cdr-exp exp1) tenv) = listof t
 
-;; We can't get the information whether a list if empty before we evaluate
+;; We can't get the information whether a list is empty before we evaluate
 ;; the program.
 ;; We treat emptylist as an ordinary list so it must have a type.
 ;; Consider cons(1, emptylist) and cons(zero?(1), emptylist):
