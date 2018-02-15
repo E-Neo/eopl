@@ -80,21 +80,6 @@
   (lambda (x)
     (symbol? x)))
 
-;; proc? : SchemeVal -> Bool
-;; procedure : Var * Exp * Env -> Proc
-(define-datatype proc proc?
-  (procedure
-   (var identifier?)
-   (body expression?)
-   (saved-env environment?)))
-
-;; apply-procedure : Proc * ExpVal -> ExpVal
-(define apply-procedure
-  (lambda (proc1 val)
-    (cases proc proc1
-           (procedure (var body saved-env)
-                      (value-of body (extend-env var val saved-env))))))
-
 
 ;;; Expressed values:
 
@@ -130,6 +115,21 @@
 (define report-expval-extractor-error
   (lambda (s val)
     (eopl:error s "ExpVal extractor error: ~s" val)))
+
+;; proc? : SchemeVal -> Bool
+;; procedure : Var * Exp * Env -> Proc
+(define-datatype proc proc?
+  (procedure
+   (var identifier?)
+   (body expression?)
+   (saved-env environment?)))
+
+;; apply-procedure : Proc * ExpVal -> ExpVal
+(define apply-procedure
+  (lambda (proc1 val)
+    (cases proc proc1
+           (procedure (var body saved-env)
+                      (value-of body (extend-env var val saved-env))))))
 
 
 ;;; Interpreter:
