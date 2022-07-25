@@ -98,3 +98,24 @@
              subty.ctor) ...
            (define subty.->fld : (-> subty.name... subty.fld-ty)
              subty.->lambda) ... ...)])))
+
+(define-syntax cases
+  (lambda (stx)
+    (define-syntax-class id/?
+      #:attributes (?)
+      (pattern x:id #:with ? (format-id #'x "~a?" #'x)))
+    (define-syntax-class clause
+      #:attributes (ctor.? (fld 1) (fld.-> 1) body)
+      (pattern [(ctor:id/? (fld:id ...)) body:expr]
+               #:with (fld.-> ...)
+               (datum->syntax
+                #'ctor
+                (map (lambda (f) (format-id #'ctor "~a->~a" #'ctor f))
+                     (syntax->list #'(fld ...))))))
+    (syntax-parse stx
+      [(_ val:expr clause:clause ...+ [else body] ...)
+       #'(cond
+           [(clause.ctor.? val)
+            (let ([clause.fld (clause.fld.-> val)] ...)
+              clause.body)] ...
+           [else body] ...)])))
