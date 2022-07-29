@@ -106,7 +106,7 @@
       (pattern x:id #:with ? (format-id #'x "~a?" #'x)))
     (define-syntax-class clause
       #:attributes (ctor.? (fld 1) (fld.-> 1) body)
-      (pattern [(ctor:id/? (fld:id ...)) body:expr]
+      (pattern [(ctor:id/? fld:id ...) body:expr]
                #:with (fld.-> ...)
                (datum->syntax
                 #'ctor
